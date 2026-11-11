@@ -14,6 +14,8 @@ export async function loadConfig(file, defaults) {
   else if(typeof data.workspace==='string')c.workspace=data.workspace;
   if(Number.isInteger(data.maxSteps)&&data.maxSteps>=1&&data.maxSteps<=100)c.maxSteps=data.maxSteps;
   if(Number.isInteger(data.contextLimit)&&data.contextLimit>=1000&&data.contextLimit<=1000000)c.contextLimit=data.contextLimit;
+  if(typeof data.computerNetworkEnabled==='boolean')c.computerNetworkEnabled=data.computerNetworkEnabled;
+  if(typeof data.computerEnabled==='boolean')c.computerEnabled=data.computerEnabled;
   if(typeof data.unlimitedSteps==='boolean')c.unlimitedSteps=data.unlimitedSteps;
   c.saveApiKey=data.saveApiKey===true && typeof data.apiKey==='string';
   c.saveBraveApiKey=data.saveBraveApiKey===true && typeof data.braveApiKey==='string';
@@ -21,7 +23,7 @@ export async function loadConfig(file, defaults) {
   return c;
 }
 export async function saveConfig(file, config) {
-  const data={endpoint:config.endpoint,model:config.model,plannerModel:config.plannerModel,workerModel:config.workerModel,reviewerModel:config.reviewerModel,workspaceDir:config.workspace,maxSteps:config.maxSteps,contextLimit:config.contextLimit,unlimitedSteps:config.unlimitedSteps,mcpUrl:config.mcpUrl,mcpInitialized:config.mcpInitialized,saveApiKey:config.saveApiKey,saveBraveApiKey:config.saveBraveApiKey,saveTavilyApiKey:config.saveTavilyApiKey,searchProvider:config.searchProvider};
+  const data={endpoint:config.endpoint,model:config.model,plannerModel:config.plannerModel,workerModel:config.workerModel,reviewerModel:config.reviewerModel,workspaceDir:config.workspace,maxSteps:config.maxSteps,contextLimit:config.contextLimit,computerEnabled:config.computerEnabled,computerNetworkEnabled:config.computerNetworkEnabled,unlimitedSteps:config.unlimitedSteps,mcpUrl:config.mcpUrl,mcpInitialized:config.mcpInitialized,saveApiKey:config.saveApiKey,saveBraveApiKey:config.saveBraveApiKey,saveTavilyApiKey:config.saveTavilyApiKey,searchProvider:config.searchProvider};
   if(config.saveApiKey && config.apiKey)data.apiKey=config.apiKey;
   if(config.saveBraveApiKey && config.braveApiKey)data.braveApiKey=config.braveApiKey;
   if(config.saveTavilyApiKey && config.tavilyApiKey)data.tavilyApiKey=config.tavilyApiKey;

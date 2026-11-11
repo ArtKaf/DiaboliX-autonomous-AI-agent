@@ -26,7 +26,7 @@ The system prompt describes this isolation to the model. On cancellation or time
 
 ## Built-in web MCP server
 
-DiaboliX starts its own MCP endpoint at `http://127.0.0.1:6660/mcp` alongside the web UI and uses it by default. The endpoint exposes `web_search` and `read_web_page`. Its random per-process bearer token is held by the local DiaboliX process; the endpoint is not intended for direct browser access. The MCP server runs on the host, outside the agent's network-isolated Docker sandbox.
+DiaboliX starts its own MCP endpoint at `http://127.0.0.1:6660/mcp` alongside the web UI and uses it by default. The endpoint exposes `web_search` and `read_web_page`. When Computer Use is enabled, it also exposes the task-scoped `computer` tool. Its random per-process bearer token is held by the local DiaboliX process; the endpoint is not intended for direct browser access. The MCP server runs on the host, outside the agent's network-isolated Docker sandbox.
 
 Choose **Automatic**, **Tavily**, or **Brave Search** in the connection settings. In Automatic mode, DiaboliX uses Tavily when its key is configured, then Brave when its key is configured, then the unofficial DuckDuckGo HTML endpoint, with a limited Wikipedia fallback. A selected provider reports errors instead of silently switching services. The result identifies its provider; public HTML endpoints may change or be unavailable.
 
@@ -74,3 +74,17 @@ A separate temporary Git repository is created outside the project for the curre
 Binary files, symbolic links, `.env*`, `config.local.json`, and the `.git`, `node_modules`, `dist`, `build`, `.next`, and `coverage` directories are excluded from snapshots and rollback. Temporary data contains copies of source code and is removed when the next task starts; it may remain in the system temporary directory after a crash. The current task's checkpoint and rollback do not persist across server restarts.
 
 Changes are checked automatically: JavaScript with `node --check`, JSON by parsing, and TypeScript with local `tsc --noEmit` when both `tsconfig.json` and the compiler are available. Otherwise, the reason for skipping the check is reported. Events are delivered over SSE; token statistics depend on the provider including `usage` in its responses. The context-compaction threshold is approximate, based on character count, and does not guarantee that a request fits a particular model's context window. A root-level `DIABOLIX.md` or `.diabolixrules` file is read at the start of a task, up to 4 KB.
+
+## Computer Use
+
+Computer Use is an opt-in, experimental graphical desktop for the **agent**, separate from your host desktop. Build the desktop image once:
+
+```sh
+docker build -t diabolix-computer:local computer
+```
+
+In connection settings, enable **Computer Use** and select an OpenAI-compatible worker model that supports image input and tool calling. The worker discovers and invokes the `computer` tool through the built-in authenticated MCP server. When needed, the agent starts a dedicated Linux desktop containing Chromium and a terminal; the interface shows screenshots after actions. The agent can open HTTP(S) URLs or `about:blank`, take screenshots, click, double-click, move and drag the mouse, scroll, type, press supported keys, and wait. For navigation, DiaboliX waits for Chromium to report the active document URL and completed load before capturing the result; a timeout is reported as an error with a screenshot rather than a confirmed page load. The desktop lives for the current task and is removed on completion or stop. It has no host display, Docker socket, or host clipboard. Networking is off by default; enable **Allow internet for the desktop** in settings to browse websites. When enabled, the container uses Docker bridge networking without destination filtering and can also reach accessible local-network addresses. The separate web-search MCP tools keep their own network restrictions.
+
+Chromium runs with its own sandbox disabled (`--no-sandbox`) inside the restricted Docker container. Browser sandboxing is disabled even when internet access is enabled. The selected project is mounted read-write: applications in the desktop can modify its files, including through the terminal. Screenshots can contain project data and are sent to the configured model provider; enable the feature only for data and providers you trust. The screenshot pane is an observation view, not an interactive remote desktop or a human takeover control. This is not a full Claude Desktop equivalent: it does not control your Mac, provide human takeover, or implement every native computer-use protocol. The worker model and provider must accept image input in OpenAI-compatible Chat Completions. If the image is unavailable, rebuild it with the command above.
+
+File creation and edits are checked by comparing the resulting file hash with the intended contents. The sandbox also runs post-edit diagnostics: JavaScript syntax checks, JSON validation, or TypeScript type checks when a local compiler and configuration are available. The agent is instructed not to create or run automated tests unless the user explicitly requests them.
