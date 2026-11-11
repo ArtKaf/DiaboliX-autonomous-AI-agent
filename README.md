@@ -45,16 +45,6 @@ You may replace the MCP URL in settings with another trusted Streamable HTTP ser
 
 This is an early harness implementation. It does not provide persistent conversation history, command approval, or a full sandbox for third-party MCP servers. CrewAI, Pydantic AI, and AutoGen are not integrated; the project uses LangGraph for Node.js.
 
-## Planning, AST, and rollback
-
-The planner uses a bounded MCTS: up to two model-proposed plans and four evaluation simulations, selected using UCB. These are model assessments, not actual code executions, and they add API calls and cost. If the planner returns an invalid response, its text is used without search.
-
-The `parse_ast` tool parses JavaScript/JSX and Python in the sandbox and returns up to 300 declarations and imports. To use `index_graph`, set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, and optionally `NEO4J_DATABASE` before starting the server. It stores a file node and its AST elements with `CONTAINS` relationships; this is a symbol index, not a complete graph of dependencies between files. Data from the selected file is sent to the configured Neo4j database. The host server, not the container, connects to the database.
-
-The agent is instructed to run tests before and after changes using `run_tests`. A baseline check is required before writing a file or running a shell command. After changes, the agent must obtain a successful `run_tests` result or report a blocking reason through `report_test_blocker`. This controls the sequence of built-in tools, but does not assess the quality of the chosen test command or restrict external MCP tools.
-
-The agent can call `rollback_last_write` to undo the last supported `write_file` or `patch_file` operation in the current task if the file still matches the agent's written content. These per-file checkpoints are held in memory, apply to files up to 1 MB, and disappear after the task; they do not undo shell commands, MCP operations, or Neo4j changes. Use version control and backups for comprehensive recovery.
-
 ## Agent workflow
 
 Before planning, the agent surveys the project in the container. A file map and AST symbols are passed to MCTS; symbols are also indexed when Neo4j is configured. The settings allow separate planner, worker, and reviewer models; an empty role field falls back to the main model. After execution, the reviewer receives a diff of changed files and can read files and search code. It can request up to two revision cycles. Repeated identical tool calls are guarded against.
