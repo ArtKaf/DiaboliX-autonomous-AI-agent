@@ -1,0 +1,19 @@
+{
+  "name": "diabolix",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.3.7",
+    "@langchain/langgraph": "^1.7.3",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "neo4j-driver": "^6.3.0"
+  }
+}
