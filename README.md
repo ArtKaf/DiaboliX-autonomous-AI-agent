@@ -43,7 +43,7 @@ You may replace the MCP URL in settings with another trusted Streamable HTTP ser
 
 ## Limitations
 
-This is an early harness implementation. It does not provide persistent conversation history, command approval, or a full sandbox for third-party MCP servers. CrewAI, Pydantic AI, and AutoGen are not integrated; the project uses LangGraph for Node.js.
+This is an early harness implementation. It does not provide persistent conversation history, command approval, or a full sandbox for third-party MCP servers. The project uses LangGraph for Node.js.
 
 ## Agent workflow
 
