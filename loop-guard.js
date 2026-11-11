@@ -1,0 +1,1 @@
+export function createLoopGuard(){let previous=null;const canonical=v=>v&&typeof v==='object'?(Array.isArray(v)?v.map(canonical):Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])]))):v;return (name,args)=>{const key=JSON.stringify([name,canonical(args)]);if(key===previous)return false;previous=key;return true;};}

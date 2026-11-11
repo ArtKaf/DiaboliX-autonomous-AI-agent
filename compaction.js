@@ -1,0 +1,2 @@
+export function estimateTokens(messages){return Math.ceil(JSON.stringify(messages).length/4)}
+export function splitForCompaction(messages,threshold,keep=3){if(estimateTokens(messages)<=threshold)return null;const indices=[];for(let i=0;i<messages.length;i++)if(messages[i].role==='assistant'&&messages[i].tool_calls?.length)indices.push(i);if(indices.length<=keep)return null;const start=indices[indices.length-keep];return {old:messages.slice(0,start),recent:messages.slice(start)}}

@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {splitForCompaction} from '../compaction.js';
+test('compaction keeps complete recent tool turns',()=>{const m=[];for(let i=0;i<5;i++)m.push({role:'assistant',tool_calls:[{id:String(i)}]},{role:'tool',tool_call_id:String(i),content:'x'.repeat(1000)});assert.equal(splitForCompaction(m,10000),null);const parts=splitForCompaction(m,100);assert.equal(parts.recent[0].tool_calls[0].id,'2');assert.equal(parts.old.length,4);assert.equal(parts.recent.length,6)});

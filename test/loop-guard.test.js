@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {createLoopGuard} from '../loop-guard.js';
+test('repeated tool calls with equivalent arguments are blocked',()=>{const guard=createLoopGuard();assert.equal(guard('read_file',{a:1,b:2}),true);assert.equal(guard('read_file',{b:2,a:1}),false);assert.equal(guard('search_code',{query:'x'}),true);assert.equal(guard('read_file',{a:1,b:2}),true)});
