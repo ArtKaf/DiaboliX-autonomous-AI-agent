@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import patch from './sandbox/patch-match.cjs';
 
 const hash = content => crypto.createHash('sha256').update(content).digest('hex');
 
@@ -13,11 +14,7 @@ export function expectedFileHash(name, args, snapshot) {
     throw Error('Cannot calculate the expected file contents');
   }
   const original = Buffer.from(snapshot.content, 'base64').toString('utf8');
-  const first = original.indexOf(args.target_content);
-  if (first < 0 || original.indexOf(args.target_content, first + 1) >= 0) {
-    throw Error('Patch target must match exactly once; include more surrounding lines');
-  }
-  return hash(original.slice(0, first) + args.replacement_content + original.slice(first + args.target_content.length));
+  return hash(patch.patchText(original,args.target_content,args.replacement_content));
 }
 
 export function verifyFileHash(output, expected) {

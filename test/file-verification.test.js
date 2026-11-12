@@ -18,6 +18,8 @@ test('write and patch verification use the intended file contents', () => {
 
 test('patch verification rejects missing and ambiguous target blocks', () => {
   const args = { target_content: 'old', replacement_content: 'new' };
-  assert.throws(() => expectedFileHash('patch_file', args, snapshot('missing')), /exactly once/);
-  assert.throws(() => expectedFileHash('patch_file', args, snapshot('old old')), /exactly once/);
+  assert.throws(() => expectedFileHash('patch_file', args, snapshot('missing')), /не найден/);
+  assert.throws(() => expectedFileHash('patch_file', args, snapshot('old old')), /более одного раза/);
+  assert.throws(() => expectedFileHash('patch_file', {target_content:'old',replacement_content:'old'}, snapshot('missing')), /ничего не меняет/);
+  assert.throws(() => expectedFileHash('patch_file', {target_content:'  const value = 1;',replacement_content:'x'}, snapshot('const value = 1;\n')), /Похожая строка 1/);
 });

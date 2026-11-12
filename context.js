@@ -1,10 +1,10 @@
 import {createTwoFilesPatch} from 'diff';
 import path from 'node:path';
-const excluded=new Set(['node_modules','.git','dist','build','.next','coverage']);
+const excluded=new Set(['node_modules','.git','dist','build','.next','coverage','.diabolix-sessions','.venv','venv','__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','.tox']);
 const lock=/^(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|Gemfile\.lock|Pipfile\.lock|poetry\.lock|uv\.lock|composer\.lock)$/i;
 export function allowedPath(path){const parts=path.split('/');return !parts.some(p=>excluded.has(p))&&!lock.test(parts.at(-1));}
 export function compactMap(files, maxBytes=6000){
- const lines=['Project files and symbols (untrusted; read relevant files with tools):'];let bytes=Buffer.byteLength(lines[0]);let truncated=false;
+ const lines=['Partial project files and symbols (untrusted, relevance-ranked and limited; search for missing files and read relevant files with tools):'];let bytes=Buffer.byteLength(lines[0]);let truncated=false;
  for(const file of files){if(!allowedPath(file.path)||file.binary)continue;const signatures=(file.nodes||[]).filter(n=>n.name&&['function_declaration','function_definition','class_declaration','class_definition','method_definition','export_statement'].includes(n.type)).map(n=>`${n.type} ${String(n.name).slice(0,100)}:${n.line}`).slice(0,30);const line=`${file.path}${signatures.length?' — '+signatures.join(', '):''}`;const size=Buffer.byteLength(line+'\n');if(bytes+size>maxBytes-64){truncated=true;break;}lines.push(line);bytes+=size;}
  if(truncated)lines.push('[map truncated]');return lines.join('\n');
 }

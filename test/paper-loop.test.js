@@ -1,0 +1,22 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import {spawn} from 'node:child_process';
+import {mkdtemp,chmod,writeFile,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+const listen=async server=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));return server.address().port};
+
+test('changing request IDs cannot repeatedly submit the same failed paper order',async t=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'diabolix-paper-loop-'));await chmod(dir,0o777);t.after(()=>rm(dir,{recursive:true,force:true}));let writes=0;
+ const market={price:100,bids:[[99,1]],asks:[[101,1]],tradeSource:'live',bookSource:'live',trades:[]};
+ const exchange=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.method==='POST'){writes++;res.writeHead(500);return res.end('{}')}if(req.url==='/api/account')return res.end(JSON.stringify({version:1,account:{balances:{USDT:1000,BTC:0,ETH:0,SOL:0},orders:[]}}));res.end(JSON.stringify({status:'live',timestamp:Date.now(),markets:{BTCUSDT:market}}))});
+ const exchangePort=await listen(exchange);t.after(()=>exchange.close());let worker=0;
+ const provider=http.createServer(async(req,res)=>{let input='';for await(const chunk of req)input+=chunk;const data=JSON.parse(input);const sys=data.messages[0].content;let message;if(sys.includes('planning specialist'))message={role:'assistant',content:'Check the virtual account.'};else if(sys.includes('You are a reviewer'))message={role:'assistant',content:JSON.stringify({approved:true,feedback:'Blocked repeated failed orders.'})};else if(++worker===1){const tool=data.tools.find(t=>t.function.description.includes('MCP server tool exchange_order:'));message={role:'assistant',content:null,tool_calls:[1,2,3,4,5].map(i=>({id:'order-'+i,type:'function',function:{name:tool.function.name,arguments:JSON.stringify({asset:'BTC',side:'sell',quantity:0.01,allow_synthetic:true,request_id:'bad_'+i})}}))}}else message={role:'assistant',content:'No BTC was sold.'};res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({choices:[{message}]}))});
+ const providerPort=await listen(provider);t.after(()=>provider.close());const mock=path.join(dir,'mock.mjs');await writeFile(mock,`const original=globalThis.fetch;globalThis.fetch=(input,options)=>{const url=String(input);return original(url.startsWith('http://127.0.0.1:20000/')?url.replace('http://127.0.0.1:20000','http://127.0.0.1:${exchangePort}'):input,options)};`);
+ const reserve=http.createServer();const port=await listen(reserve);await new Promise(resolve=>reserve.close(resolve));const child=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),DIABOLIX_CONFIG_PATH:path.join(dir,'config.local.json'),NODE_OPTIONS:`--import=${mock}`}});t.after(()=>child.kill());await new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.once('exit',code=>reject(Error('server exited '+code)))});
+ const base=`http://127.0.0.1:${port}`,html=await(await fetch(base)).text(),token=html.match(/name="diabolix-token" content="([^"]+)/)[1],headers={'Content-Type':'application/json','X-Diabolix-Token':token},post=(route,data)=>fetch(base+'/api/'+route,{method:'POST',headers,body:JSON.stringify(data)}).then(r=>r.json());
+ await post('config',{profile:'trading',endpoint:`http://127.0.0.1:${providerPort}/v1`,model:'test',workspace:dir,maxSteps:5});const run=await post('run',{message:'Sell virtual BTC if available.'});let result;for(let i=0;i<3000;i++){result=await(await fetch(base+'/api/events?id='+run.id,{headers})).json();if(result.done)break;await new Promise(resolve=>setTimeout(resolve,20))}
+ assert.equal(result.done,true);const observations=result.events.filter(e=>e.type==='tool_result'&&e.name==='exchange_order').map(e=>e.text);assert.equal(observations.length,5,JSON.stringify(result.events.filter(e=>e.type==='error')));assert.equal(observations.filter(x=>x.includes('Insufficient unreserved virtual asset')).length,2);assert.equal(observations.filter(x=>x.includes('Repeated paper order blocked')).length,3);assert.ok(result.events.filter(e=>e.type==='tool_start'&&e.name==='exchange_order').every(e=>e.args.request_id.startsWith('diab_')&&e.args.request_id.length>=16));assert.equal(writes,0);assert.ok(result.events.some(e=>e.type==='error'&&e.text.includes('Защитная остановка')));assert.ok(!result.events.some(e=>e.type==='done'));
+});

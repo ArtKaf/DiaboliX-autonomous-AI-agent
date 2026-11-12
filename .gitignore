@@ -1,4 +1,11 @@
 node_modules/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
 .env
 .env.*
 !.env.example
@@ -6,3 +13,6 @@ node_modules/
 
 config.local.json
 config.local.json.*.tmp
+.diabolix-orders/
+.diabolix-eval-results/
+.diabolix-sessions/

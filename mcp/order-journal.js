@@ -1,0 +1,14 @@
+import {readFile,open,rename,rm} from 'node:fs/promises';
+import crypto from 'node:crypto';
+
+// A pending entry is deliberately never retried: the simulator has no idempotency API.
+export class OrderJournal {
+ constructor(file=null){this.file=file;this.loaded=false;this.entries={};this.tail=Promise.resolve();this.ready=!file}
+ async run(fn){const previous=this.tail;let release;this.tail=new Promise(resolve=>{release=resolve});await previous;let locked=false;try{if(this.file){let lock;try{lock=await open(this.file+'.lock','wx',0o600);locked=true;await lock.writeFile(JSON.stringify({pid:process.pid,created_at:Date.now()}))}catch(e){if(e.code==='EEXIST')throw Error('Paper order journal is locked. Inspect any interrupted order before clearing its lock.');throw e}finally{await lock?.close()}this.loaded=false;this.entries={}}await this.load();return await fn(this)}finally{if(locked)await rm(this.file+'.lock',{force:true}).catch(()=>{});release()}}
+ async load(){if(this.loaded)return;if(this.file){try{const data=JSON.parse(await readFile(this.file,'utf8'));if(!data||data.version!==1||!data.entries||typeof data.entries!=='object'||Array.isArray(data.entries))throw Error('invalid journal');this.entries=data.entries}catch(e){if(e.code!=='ENOENT')throw Error('Paper order journal cannot be read; refusing orders.')}}this.loaded=true}
+ async prepare(){await this.run(async()=>this.save());this.ready=true}
+ async save(){if(!this.file)return;const tmp=this.file+'.'+crypto.randomUUID()+'.tmp';let handle;try{handle=await open(tmp,'wx',0o600);await handle.writeFile(JSON.stringify({version:1,entries:this.entries}));await handle.sync();await handle.close();handle=null;await rename(tmp,this.file)}catch(e){await handle?.close().catch(()=>{});throw Error('Paper order journal could not be saved; refusing to retry.')}finally{await rm(tmp,{force:true}).catch(()=>{})}}
+ async begin(id,fingerprint,kind='order',metadata={}){if(!this.ready)throw Error('Paper order journal is not initialized; refusing orders.');const old=Object.hasOwn(this.entries,id)?this.entries[id]:null;if(old){if(old.fingerprint!==fingerprint)throw Error('This request_id was already used with different arguments.');if(old.status==='confirmed')return {duplicate:true,order_id:old.order_id,protective_order_id:old.protective_order_id,...(old.position_id?{position_id:old.position_id}:{})};throw Error('A previous attempt with this request_id has an unconfirmed or unresolved outcome. Inspect the simulator account; do not submit it again.')}this.entries[id]={fingerprint,status:'pending',kind,...metadata};await this.save();return null}
+ async mark(id,changes){this.entries[id]={...this.entries[id],...changes};await this.save()}
+ async confirm(id,orderId,protectiveOrderId){await this.mark(id,{status:'confirmed',order_id:orderId,...(protectiveOrderId?{protective_order_id:protectiveOrderId}:{})})}
+}

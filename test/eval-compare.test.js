@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {summarize} from '../eval/compare.js';
+test('evaluation summary counts timeouts, usage and mean duration',()=>{const result=summarize({model:'m',execution_mode:'quick',results:[{id:'a',status:'passed',duration_ms:100,usage:{worker:{prompt:10,completion:2}}},{id:'b',status:'timeout',duration_ms:300}]});assert.equal(result.passed,1);assert.equal(result.timeouts,1);assert.equal(result.mean_duration_ms,200);assert.equal(result.prompt_tokens,10);assert.equal(result.completion_tokens,2)});

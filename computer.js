@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process';
 import crypto from 'node:crypto';
+import {protectedConfigMount} from './workspace-config.js';
 const image=process.env.DIABOLIX_COMPUTER_IMAGE||'diabolix-computer:local';
 function command(args,{input,signal,timeout=20000,limit=3000000}={}){return new Promise((resolve,reject)=>{
  if(signal?.aborted)return reject(Error('Действие остановлено'));
@@ -20,7 +21,7 @@ export function normalizeNavigationUrl(input){
 const allowedKeys=new Set(['Return','Tab','Escape','BackSpace','Delete','space','Up','Down','Left','Right','Home','End','Page_Up','Page_Down','ctrl+a','ctrl+c','ctrl+v','ctrl+x','ctrl+z','ctrl+y','ctrl+s','ctrl+f','ctrl+l','ctrl+r','alt+Left','alt+Right','alt+Tab']);
 export class Computer {
  constructor(workspace,{networkEnabled=false}={}){this.workspace=workspace;this.networkEnabled=networkEnabled;this.name='diabolix-computer-'+crypto.randomUUID();this.started=false;}
- async start(signal){if(this.started)return;this.started=true;try{await command(['run','-d','--rm','--name',this.name,'--network',this.networkEnabled?'bridge':'none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--pids-limit','256','--memory','2g','--cpus','2','--shm-size','256m','--tmpfs','/tmp:rw,nosuid,nodev,size=512m,mode=1777','--mount',`type=bind,src=${this.workspace},dst=/workspace`,image],{signal,timeout:30000});for(let i=0;i<30;i++){try{await this.exec(['xdotool','getdisplaygeometry'],{signal,timeout:2000});await this.exec(['xdotool','search','--onlyvisible','--class','chromium'],{signal,timeout:2000});return}catch{if(signal.aborted)throw Error('Остановлено');await new Promise(r=>setTimeout(r,200))}}throw Error('Рабочий стол не запустился')}catch(e){await this.close();throw e}}
+ async start(signal){if(this.started)return;this.started=true;try{await command(['run','-d','--rm','--name',this.name,'--network',this.networkEnabled?'bridge':'none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--pids-limit','256','--memory','2g','--cpus','2','--shm-size','256m','--tmpfs','/tmp:rw,nosuid,nodev,size=512m,mode=1777','--mount',`type=bind,src=${this.workspace},dst=/workspace`,...protectedConfigMount(this.workspace),image],{signal,timeout:30000});for(let i=0;i<30;i++){try{await this.exec(['xdotool','getdisplaygeometry'],{signal,timeout:2000});await this.exec(['xdotool','search','--onlyvisible','--class','chromium'],{signal,timeout:2000});return}catch{if(signal.aborted)throw Error('Остановлено');await new Promise(r=>setTimeout(r,200))}}throw Error('Рабочий стол не запустился')}catch(e){await this.close();throw e}}
  exec(args,options={}){return command(['exec','-i',this.name,...args],options)}
  async screenshot(signal){await this.exec(['scrot','-o','/tmp/diabolix-screen.png'],{signal});const data=await this.exec(['cat','/tmp/diabolix-screen.png'],{signal});if(data.length<8||data.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')throw Error('Не удалось получить снимок экрана');return data.toString('base64')}
  async act(args,signal){await this.start(signal);this.lastObservation=null;const {action}=args;const x=()=>coord(args.x,1280),y=()=>coord(args.y,800);
