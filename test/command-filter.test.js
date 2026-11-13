@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const {blockedCommand}=createRequire(import.meta.url)('../sandbox/command-filter.cjs');
+const {blockedCommand,isPackageInstall}=createRequire(import.meta.url)('../sandbox/command-filter.cjs');
 
 test('one-shot Python and Node CLI commands, redirection and quoted ampersands are allowed',()=>{
  for(const command of [
@@ -42,4 +42,8 @@ test('background shell operators and known server invocations are blocked',()=>{
   'node -e "require(\'node:http\').createServer(() => {}).listen(8080)"',
   'node -e "const {createServer}=require(\'http\'); createServer(() => {}).listen(8080)"',
  ])assert.equal(blockedCommand(command),true,command);
+});
+test('direct npm and pip installations are detected without confusing ordinary commands',()=>{
+ for(const command of ['npm install foo','npm i foo','npm --prefix app install','cd app && npm install','/workspace/.venv/bin/pip3 install numpy','python3 -m pip install numpy','python3 -I -m pip install numpy','env FOO=bar pip install numpy','command npm install','sh -c "python -m pip install numpy"'])assert.equal(isPackageInstall(command),true,command);
+ for(const command of ['echo "npm install foo"','node -e "console.log(\'pip install\')"','python3 -c "print(\'pip install\')"','npm run install','npm run build','npm install --help','pip --version','python3 -m pip list',"python3 - <<'PY'\nprint('npm install')\nPY"])assert.equal(isPackageInstall(command),false,command);
 });

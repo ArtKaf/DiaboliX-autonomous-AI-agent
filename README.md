@@ -52,6 +52,8 @@ The page reader accepts public HTTP(S) pages on standard ports and returns limit
 
 You may replace the MCP URL in settings with another trusted Streamable HTTP server, or clear it to disable MCP. External MCP servers execute tools outside the Docker sandbox, with their own permissions. External MCP authentication and stdio connections are not currently supported.
 
+The optional **MCP: only tools declared read-only** setting hides tools whose server does not advertise `readOnlyHint: true`. The event log summarizes server-declared annotations. These are claims made by the MCP server, not enforced permissions: a malicious or incorrect server can mislabel a tool, and this filter does not sandbox it. The filter is off by default for backward compatibility; it can hide Computer Use and other tools.
+
 ## Trading: future idea only
 
 **Do not use Trading.** The Trading profile and associated exchange code are unfinished experiments that have not reached alpha testing. They are retained solely as a reminder of a possible future direction. Their presence is not an endorsement of use and does not indicate that trading behavior, risk controls, market data, or results are reliable. Do not connect real accounts, place trades, run paper-trading sessions, or base financial decisions on this code.
@@ -76,17 +78,30 @@ Before planning, the agent surveys the project in the container. A file map and 
 
 `read_file` supports windows of up to 250 lines; `search_code` returns up to 50 matches; `patch_file` edits a single exact match and supports rollback. `write_file` creates files and permits explicit `overwrite: true`. Identical patch replacements are rejected; missing and ambiguous targets produce distinct suggestions. Reconnaissance excludes dependency and build directories, lock files, and binary files. The map contains only paths and symbol names, is limited to 6 KB, and covers up to 300 ranked text files from up to 30,000 discovered paths; ranking by task terms is heuristic and can omit relevant files. The reviewer's diff is generated separately from Shadow Git across included text files and is output-limited. If it is truncated, the reviewer should inspect files with its tools.
 
+Additional built-in tools complement the existing tools:
+
+- `project_state` lists included text files and their changes relative to the task baseline, can check an exact path and hash, and reports available test and diagnostic results with freshness information. It does not inventory excluded paths or binary files.
+- `code_navigation` uses ast-grep for symbol, import and structural searches, and language servers for definitions, references and file diagnostics in JavaScript, TypeScript and Python. LSP results depend on the project configuration and dependencies; the diagnostic response may be incomplete when analysis takes longer than the wait. `module_map` provides a paginated syntactic import map. It does not resolve runtime imports or aliases; use LSP for semantic navigation. Language servers are started per request rather than kept resident.
+- `smart_edit` replaces a unique symbol or a line range in an existing file. It requires a current SHA-256, checks syntax where supported, returns the actual diff and supports `rollback_last_write`; `preview: true` returns the proposed diff without writing. `smart_edit_batch` prepares up to ten distinct files before applying changes and also supports preview. If a later edit fails, it attempts to restore earlier ones only while their hashes match. This is not an atomic multi-file transaction: interruption, Docker failure or concurrent changes can leave changes requiring manual inspection.
+- `diagnose_project` detects common project markers and performs bounded static syntax checks, prioritizing changed files; it uses an installed local TypeScript compiler when available. It compares diagnostics with the previous observation where the same checks were performed, without claiming an observed difference was caused by a change. It reports skipped checks and does not run tests, import project modules or run Django commands. Running a project-provided compiler executes code inside the sandbox.
+- `verify_task` reports observed tool results, changed files and the freshness of diagnostics and test results. It runs no checks itself and does not declare the task complete.
+- `security_scan` defaults to a bounded heuristic scan for several possible security issues. An optional `semgrep` engine uses the bundled rules and requires Semgrep installed in the project's `.venv`; it runs inside the network-isolated sandbox. It ignores Git ignore rules while excluding common dependency, build, configuration and session paths, so other Git-ignored files may be scanned. Results omit matched source and secret values, require manual review and cannot establish that the project is secure. The bundled rule set is intentionally small.
+
+No new tools require the agent to write automated tests. File hashes and diagnostics are scoped to the current task; filesystem changes outside the included Shadow Git inventory cannot be reflected in its freshness checks.
+
 After changing sandbox code, rebuild the image:
 
 ```sh
 docker build -t diabolix-sandbox:local sandbox
 ```
 
-Ordinary commands have no network access; dependency installation uses the restricted temporary network described above. Synchronous Python and Node.js commands can use normal shell redirections such as `2>&1`, quoted arguments and heredocs. Background servers and daemons are prohibited by the instructions and checked by a command filter for common shell operators and server invocations. The filter cannot reliably identify every possible server or infinite program, especially in scripts or complex shell syntax; Docker isolation and command timeouts remain in effect.
+Ordinary commands have no network access; dependency installation uses the restricted temporary network described above. Direct `npm install`, `npm i` and `pip install` commands in `run_command` are rejected before execution with a suggestion to use `install_dependencies`; this also covers common `python -m pip` forms. This convenience filter does not analyze arbitrary scripts or every possible shell expression. Synchronous Python and Node.js commands can use normal shell redirections such as `2>&1`, quoted arguments and heredocs. Background servers and daemons are prohibited by the instructions and checked by a command filter for common shell operators and server invocations. The filter cannot reliably identify every possible server or infinite program, especially in scripts or complex shell syntax; Docker isolation and command timeouts remain in effect.
 
 ## Local settings and Full Auto
 
-Coding mode supports **Quick** (one plan), **Standard** (the existing bounded plan selection), and **Deep** (an additional read-only researcher with a four-tool budget before planning). Reports are untrusted and must be checked by the worker. Deep mode takes additional model calls and time. The selected mode is persisted in settings.
+Coding mode supports **Quick** (one plan), **Standard** (the existing bounded plan selection), and **Deep** (an additional read-only researcher before planning). The researcher can make as many read-only tool calls as needed while each batch yields new information; when a batch yields nothing new, it stops and summarizes its findings. Reports are untrusted and must be checked by the worker. Deep mode takes additional model calls and time. The selected mode is persisted in settings.
+
+An optional **Automatic** mode uses a conservative text heuristic to choose one of these modes; the default remains Standard. The heuristic does not establish task difficulty, and its impact on quality and cost should be evaluated on representative tasks.
 
 Settings are stored in `config.local.json`, which is excluded from Git. If you enable key persistence, the key is written to this file **without encryption**, with owner-only file permissions. The configured settings file is masked inside DiaboliX's containers, but copies of secrets and third-party host tools are not protected by this mask. The API does not return keys. To remove a saved key, disable the checkbox and save the settings.
 
@@ -102,6 +117,14 @@ An explicit **Continue** starts a new attempt with the original task and recorde
 
 Tool events include structured status evidence separate from model summaries. A short window of statuses is included in subsequent prompts; it is not proof that the full task is complete. The worker and reviewer can use `read_task_evidence` to list recent actual tool results and retrieve a result by event ID after context compaction (long results are truncated). A repeated identical review with unchanged answer and file tree stops after three repetitions in coding mode.
 
+### Shared task memory
+
+Shared memory is a bounded, read-only projection of the existing `.diabolix-sessions` journal, not a separate model-controlled database. The harness records researcher observations with source event IDs, the selected model-generated plan, worker tool results and reviewer assessments, and waits for journal writes before passing them to the next role. Configured credentials are redacted from projected memory and retrieved journal evidence; arbitrary project secrets cannot be reliably detected. A journal write failure produces a warning; OS or power failure can still interrupt buffered filesystem writes. Planner, researcher, worker and reviewer receive different compact views; recent tool turns remain in the worker conversation when needed for the provider's tool-call protocol. `project_state` includes the worker view, and `GET /api/task-memory?id=<run-id>&role=worker` exposes a view to the local client. `read_task_evidence` can retrieve a source event from the current run or a recorded ancestor.
+
+Requirements are derived by the harness from the original user task: `R1` represents the whole task and up to twelve additional entries quote explicit list items. The list can be incomplete; the full original task remains authoritative. The reviewer may assess a requirement and cite source IDs, but cannot create trusted facts or requirements. `supported_by_reviewer` means that at least one cited observation exists, succeeded and has current, tracked-file provenance; it is the reviewer's interpretation, **not proof that the observation logically establishes the requirement**. Missing, failed, truncated, unknown, fabricated or stale sources leave the requirement `unconfirmed`. Legacy reviewers can omit the per-requirement list; those requirements remain unconfirmed, even when the reviewer gives an overall approval. The console, task history and Telegram completion message distinguish unconfirmed requirements or sources requiring revalidation.
+
+For a successful file read, the harness compares the actual displayed lines with the tracked file in the Shadow Git tree; verified writes are matched against the tree using SHA-256. A later change to the included tree makes those observations stale. This freshness check covers only tracked text files: ignored dependencies, binary files, external tools and live web data can have unknown freshness. A model-generated summary or plan is always labelled as an interpretation. On explicit continuation, source links are restricted to the current task's same-workspace, same-profile ancestry (up to eight prior runs); prior-run observations have unknown freshness until rechecked. Older task notes remain available as unverified legacy notes. The journal and memory are not a live LangGraph checkpoint.
+
 
 A separate temporary Git repository is created outside the project for the current task. It stores the initial state and intermediate text-file changes without modifying the project's `.git`. After the task finishes, its changes can be rolled back to the initial state. Rollback is rejected if text files changed after the task finished; changes made manually *during* the task cannot be automatically distinguished from the agent's changes.
 
@@ -114,6 +137,14 @@ When a model-provider API request fails, DiaboliX makes up to ten retries at 30-
 After a file change, **Summary changes** opens a complete, color-coded diff against the start of the current task. New files appear as added lines. The view uses the same exclusions as the shadow checkpoint above and remains available after a page refresh while the task's checkpoint exists; it is replaced when a new task starts or the server restarts.
 
 ## Computer Use
+
+When Computer Use is enabled and the user explicitly requests a browser check, the worker can call `browser_test`. It starts the supplied local application command and headless Chromium with Playwright in a separate short-lived container without networking, allows only a local HTTP URL and up to ten bounded steps, and returns a screenshot, browser errors and step results. The mounted project is writable, and the application command can change it. The container and its server are removed on completion, cancellation or timeout. Rebuild the image after updating this component:
+
+```sh
+docker build -t diabolix-computer:local computer
+```
+
+This is a bounded browser scenario, not an assertion that the full application works. A syntax check or browser observation is not a substitute for a test suite. The agent is instructed not to create or run automated tests unless the user requests them.
 
 Computer Use is an opt-in, experimental graphical desktop for the **agent**, separate from your host desktop. Build the desktop image once:
 
@@ -129,6 +160,12 @@ File creation and edits are checked by comparing the resulting file hash with th
 
 ## Synthetic evaluation
 
-`npm run eval` runs small synthetic coding tasks in temporary workspaces, with independent checks in Docker. Set `DIABOLIX_EVAL_ENDPOINT` and `DIABOLIX_EVAL_MODEL`; `DIABOLIX_EVAL_API_KEY` is optional. `DIABOLIX_EVAL_MODE` selects quick, standard or deep; `DIABOLIX_EVAL_CASE` optionally selects one case, and `DIABOLIX_EVAL_TIMEOUT_MS` sets the per-case timeout. Results and redacted event logs are saved under `.diabolix-eval-results/`, which is excluded from Git. These fixtures are smoke tests, not a SWE-bench score or a comprehensive quality benchmark.
+`npm run eval` runs small synthetic JavaScript, TypeScript and Python coding tasks in temporary workspaces, with independent checks in Docker. Set `DIABOLIX_EVAL_ENDPOINT` and `DIABOLIX_EVAL_MODEL`; `DIABOLIX_EVAL_API_KEY` is optional. `DIABOLIX_EVAL_MODE` selects quick, standard, deep or auto; `DIABOLIX_EVAL_CASE` optionally selects one case, `DIABOLIX_EVAL_REPEATS` sets 1–10 attempts per case, and `DIABOLIX_EVAL_TIMEOUT_MS` sets the per-case timeout. Results and redacted event logs are saved under `.diabolix-eval-results/`, which is excluded from Git. Explicitly launching this evaluation runs its independent checks; the agent itself is not asked to write tests. These fixtures are smoke tests, not a SWE-bench score or a comprehensive quality benchmark.
 
-Use `node eval/compare.js <report-a.json> <report-b.json>` to compare reports. The comparison flags different models or case IDs and reports token usage only when supplied by the provider. Repeated runs are needed to estimate variability.
+Use `node eval/compare.js <report-a.json> <report-b.json>` to compare reports. The comparison flags different models or fixture hashes and reports token usage only when supplied by the provider. Per-case attempt counts, tool calls and token usage by role help inspect failures; repeated runs are needed to estimate variability. The report does not infer costs without pricing data.
+
+## SWE-bench prediction export
+
+`node eval/swebench.js manifest.json predictions.jsonl` can generate predictions for a locally prepared SWE-bench manifest. Set `DIABOLIX_EVAL_ENDPOINT` and `DIABOLIX_EVAL_MODEL`, and optionally `DIABOLIX_EVAL_API_KEY`, `DIABOLIX_EVAL_MODE` and `DIABOLIX_EVAL_TIMEOUT_MS`. Each manifest entry must contain `instance_id`, an absolute local `repo_path`, `base_commit` (a commit hash present in that repository), and `problem_statement`. The adapter clones each repository to a temporary workspace at the requested commit, runs DiaboliX there and exports `instance_id`, `model_name_or_path` and `model_patch` in the official JSONL prediction format. It never checks out or edits the source repository. Output files must not already exist; a companion metadata file records whether each agent run finished or was interrupted.
+
+This adapter does not download the Verified dataset, repositories or benchmark environments and does not score predictions. Supply matching local repository mirrors and dataset entries, then explicitly run the [official SWE-bench evaluation harness](https://www.swebench.com/SWE-bench/guides/evaluation/) against the generated file. The official harness executes benchmark tests in its own Docker environments. A prediction export alone is not a SWE-bench score.

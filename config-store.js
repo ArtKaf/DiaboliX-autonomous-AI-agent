@@ -10,7 +10,7 @@ export async function loadConfig(file, defaults) {
   if(!data || typeof data!=='object' || Array.isArray(data)) throw Error('Некорректный файл настроек');
   const c={profile:'coding',...defaults};
   if(PROFILES.includes(data.profile))c.profile=data.profile;
-  if(['quick','standard','deep'].includes(data.executionMode))c.executionMode=data.executionMode;
+  if(['quick','standard','deep','auto'].includes(data.executionMode))c.executionMode=data.executionMode;
   for(const key of ['endpoint','apiKey','braveApiKey','tavilyApiKey','model','plannerModel','workerModel','reviewerModel','mcpUrl']) if(typeof data[key]==='string')c[key]=data[key];
   for(const [i,key] of REASONING_KEYS.entries())if(validEffort(data[key],i>0))c[key]=data[key];
   if(typeof data.telegramUserId==='string')c.telegramUserId=data.telegramUserId;
@@ -23,6 +23,7 @@ export async function loadConfig(file, defaults) {
   else if(typeof data.workspace==='string')c.workspace=data.workspace;
   if(Number.isInteger(data.maxSteps)&&data.maxSteps>=1&&data.maxSteps<=100)c.maxSteps=data.maxSteps;
   if(Number.isInteger(data.contextLimit)&&data.contextLimit>=1000&&data.contextLimit<=1000000)c.contextLimit=data.contextLimit;
+  if(typeof data.mcpReadOnly==='boolean')c.mcpReadOnly=data.mcpReadOnly;
   if(typeof data.computerNetworkEnabled==='boolean')c.computerNetworkEnabled=data.computerNetworkEnabled;
   if(typeof data.computerEnabled==='boolean')c.computerEnabled=data.computerEnabled;
   if(typeof data.unlimitedSteps==='boolean')c.unlimitedSteps=data.unlimitedSteps;
@@ -32,7 +33,7 @@ export async function loadConfig(file, defaults) {
   return c;
 }
 export async function saveConfig(file, config) {
-  const data={profile:PROFILES.includes(config.profile)?config.profile:'coding',executionMode:['quick','standard','deep'].includes(config.executionMode)?config.executionMode:'standard',endpoint:config.endpoint,model:config.model,plannerModel:config.plannerModel,workerModel:config.workerModel,reviewerModel:config.reviewerModel,workspaceDir:config.workspace,maxSteps:config.maxSteps,contextLimit:config.contextLimit,computerEnabled:config.computerEnabled,computerNetworkEnabled:config.computerNetworkEnabled,unlimitedSteps:config.unlimitedSteps,mcpUrl:config.mcpUrl,mcpInitialized:config.mcpInitialized,saveApiKey:config.saveApiKey,saveBraveApiKey:config.saveBraveApiKey,saveTavilyApiKey:config.saveTavilyApiKey,searchProvider:config.searchProvider};
+  const data={profile:PROFILES.includes(config.profile)?config.profile:'coding',executionMode:['quick','standard','deep','auto'].includes(config.executionMode)?config.executionMode:'standard',endpoint:config.endpoint,model:config.model,plannerModel:config.plannerModel,workerModel:config.workerModel,reviewerModel:config.reviewerModel,workspaceDir:config.workspace,maxSteps:config.maxSteps,contextLimit:config.contextLimit,computerEnabled:config.computerEnabled,computerNetworkEnabled:config.computerNetworkEnabled,unlimitedSteps:config.unlimitedSteps,mcpReadOnly:config.mcpReadOnly,mcpUrl:config.mcpUrl,mcpInitialized:config.mcpInitialized,saveApiKey:config.saveApiKey,saveBraveApiKey:config.saveBraveApiKey,saveTavilyApiKey:config.saveTavilyApiKey,searchProvider:config.searchProvider};
   for(const key of REASONING_KEYS)if(config[key]!==undefined)data[key]=config[key];
   for(const key of ['telegramUserId','telegramEnabled','saveTelegramToken'])if(config[key]!==undefined)data[key]=config[key];
   if(config.saveTelegramToken&&config.telegramToken)data.telegramToken=config.telegramToken;

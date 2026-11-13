@@ -1,0 +1,11 @@
+rules:
+  - id: diabolix-dynamic-eval
+    message: Dynamic evaluation can execute untrusted code; inspect the data flow.
+    severity: WARNING
+    languages: [javascript, typescript, python]
+    pattern-regex: '\beval\s*\('
+  - id: diabolix-python-shell
+    message: A subprocess with shell=True may interpret untrusted input.
+    severity: WARNING
+    languages: [python]
+    pattern: subprocess.run(..., shell=True, ...)

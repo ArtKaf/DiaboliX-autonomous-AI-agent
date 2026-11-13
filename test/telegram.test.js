@@ -30,3 +30,4 @@ test('Telegram commands stay ordered while stop can interrupt a slow request',as
 test('Telegram rate limits retry and long messages preserve Unicode',async()=>{
  const {bot}=setup();let calls=0;const sent=[],waits=[];bot.wait=async ms=>waits.push(ms);bot.request=async(method,body)=>{if(method==='sendMessage'&&++calls===1){const error=Error('rate limited');error.status=429;error.retryAfter=2;throw error}sent.push(body.text);return true};const text='x'.repeat(3499)+'😈'+'y'.repeat(20);await bot.send(text);assert.deepEqual(waits,[2000]);assert.equal(sent.join(''),text);assert.equal(sent.length,2);
 });
+test('Telegram completion keeps a warning about unsupported requirements',async()=>{const {bot,requests}=setup();bot.notify({type:'done',text:'Задача завершена. Требования не подтверждены.'});await bot.queue;assert.ok(requests.some(r=>r.method==='sendMessage'&&r.body.text.includes('не подтверждены')))});

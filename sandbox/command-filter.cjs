@@ -81,4 +81,34 @@ function blockedCommand(command,depth=0){
  }
  return isServerCommand(words,depth);
 }
-module.exports={blockedCommand,tokenize};
+
+// Detect direct package-install commands without interpreting quoted text as shell code.
+// Like the server filter, this is an ACI guard, not a complete shell parser.
+function installWords(words,depth){
+ while(words.length&&/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]))words=words.slice(1);
+ if(!words.length)return false;
+ const program=basename(words[0]);let args=words.slice(1);
+ if(program==='env'){
+  while(args.length){if(/^[A-Za-z_][A-Za-z0-9_]*=/.test(args[0])||['-i','--ignore-environment','-0','--null'].includes(args[0]))args.shift();else if(['-u','--unset','-C','--chdir'].includes(args[0]))args.splice(0,2);else if(args[0].startsWith('--unset=')||args[0].startsWith('--chdir='))args.shift();else break}
+  return installWords(args,depth);
+ }
+ if(['command','exec'].includes(program)){while(args[0]?.startsWith('-'))args.shift();return installWords(args,depth)}
+ if(['sh','bash','dash','zsh'].includes(program)&&depth<4){const index=args.findIndex(x=>/^-[a-z]*c[a-z]*$/.test(x));return index>=0&&typeof args[index+1]==='string'&&isPackageInstall(args[index+1],depth+1)}
+ if(/^(?:python(?:\d+(?:\.\d+)*)?|pypy(?:\d+)?)$/.test(program)){
+  let i=0;while(i<args.length){if(args[i]==='-m')return /^pip(?:\d+(?:\.\d+)*)?$/.test(args[i+1]||'')&&installWords([args[i+1],...args.slice(i+2)],depth);if(args[i]==='-c'||!args[i].startsWith('-'))return false;if(['-W','-X'].includes(args[i]))i++;i++}return false;
+ }
+ if(program!=='npm'&&!/^pip(?:\d+(?:\.\d+)*)?$/.test(program))return false;
+ if(args.some(x=>['--help','-h','--version','-V'].includes(x)))return false;
+ const optionsWithValue=program==='npm'?new Set(['--prefix','--userconfig','--cache','--registry','--workspace','-w']):new Set(['--proxy','--retries','--timeout','--index-url','-i','--extra-index-url','--trusted-host','--cert','--client-cert','--cache-dir','--log']);
+ while(args.length&&args[0].startsWith('-')){const flag=args.shift();if(optionsWithValue.has(flag))args.shift()}
+ return program==='npm'?['install','i'].includes(args[0]):args[0]==='install';
+}
+function isPackageInstall(command,depth=0){
+ let words=[],redirect=false;
+ for(const token of tokenize(command)){
+  if(token.op){if(token.op==='redirect'){redirect=true;continue}if(installWords(words,depth))return true;words=[];redirect=false;continue}
+  if(redirect){redirect=false;continue}words.push(token.word);
+ }
+ return installWords(words,depth);
+}
+module.exports={blockedCommand,tokenize,isPackageInstall};
