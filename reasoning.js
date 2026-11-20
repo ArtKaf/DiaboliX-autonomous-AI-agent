@@ -1,12 +1,12 @@
 export const EFFORT_LEVELS = Object.freeze(['none','minimal','low','medium','high','xhigh','max']);
-export const REASONING_KEYS = Object.freeze(['reasoningEffort','plannerReasoningEffort','workerReasoningEffort','reviewerReasoningEffort']);
+export const REASONING_KEYS = Object.freeze(['reasoningEffort','reviewerReasoningEffort']);
 
 export function validEffort(value, roleOverride = false) {
   return value === '' || (roleOverride && value === 'default') || EFFORT_LEVELS.includes(value);
 }
 
 export function resolveEffort(config, role) {
-  const override = config[`${role}ReasoningEffort`];
+  const override = role==='reviewer'?config.reviewerReasoningEffort:undefined;
   if (override === 'default') return '';
   return override || config.reasoningEffort || '';
 }

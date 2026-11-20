@@ -1,18 +1,24 @@
 import {readFile, writeFile, rename, unlink} from 'node:fs/promises';
 import crypto from 'node:crypto';
-import {REASONING_KEYS,validEffort} from './reasoning.js';
+import {validEffort} from './reasoning.js';
 import {PROFILES} from './profiles.js';
 
 export async function loadConfig(file, defaults) {
+  const migratedDefaults={profile:'coding',...defaults};
+  for(const key of ['executionMode','frontierMcts','plannerModel','workerModel','plannerReasoningEffort','workerReasoningEffort'])delete migratedDefaults[key];
   let data;
   try { data=JSON.parse(await readFile(file,'utf8')); }
-  catch(e) { if(e.code==='ENOENT') return {profile:'coding',...defaults}; throw new Error(`Не удалось загрузить настройки: ${e.message}`); }
+  catch(e) { if(e.code==='ENOENT') return migratedDefaults; throw new Error(`Не удалось загрузить настройки: ${e.message}`); }
   if(!data || typeof data!=='object' || Array.isArray(data)) throw Error('Некорректный файл настроек');
-  const c={profile:'coding',...defaults};
+  const c=migratedDefaults;
   if(PROFILES.includes(data.profile))c.profile=data.profile;
-  if(['quick','standard','deep','auto'].includes(data.executionMode))c.executionMode=data.executionMode;
-  for(const key of ['endpoint','apiKey','braveApiKey','tavilyApiKey','model','plannerModel','workerModel','reviewerModel','mcpUrl']) if(typeof data[key]==='string')c[key]=data[key];
-  for(const [i,key] of REASONING_KEYS.entries())if(validEffort(data[key],i>0))c[key]=data[key];
+  for(const key of ['endpoint','apiKey','braveApiKey','tavilyApiKey','model','reviewerModel','mcpUrl']) if(typeof data[key]==='string')c[key]=data[key];
+  // The former worker was the primary model in Frontier: preserve that choice.
+  if(typeof data.workerModel==='string'&&data.workerModel.trim())c.model=data.workerModel.trim();
+  if(validEffort(data.reasoningEffort))c.reasoningEffort=data.reasoningEffort;
+  if(validEffort(data.reviewerReasoningEffort,true))c.reviewerReasoningEffort=data.reviewerReasoningEffort;
+  if(data.workerReasoningEffort==='default')c.reasoningEffort='';
+  else if(typeof data.workerReasoningEffort==='string'&&data.workerReasoningEffort&&validEffort(data.workerReasoningEffort))c.reasoningEffort=data.workerReasoningEffort;
   if(typeof data.telegramUserId==='string')c.telegramUserId=data.telegramUserId;
   if(typeof data.telegramEnabled==='boolean')c.telegramEnabled=data.telegramEnabled;
   if(typeof data.saveTelegramToken==='boolean')c.saveTelegramToken=data.saveTelegramToken;
@@ -27,14 +33,16 @@ export async function loadConfig(file, defaults) {
   if(typeof data.computerNetworkEnabled==='boolean')c.computerNetworkEnabled=data.computerNetworkEnabled;
   if(typeof data.computerEnabled==='boolean')c.computerEnabled=data.computerEnabled;
   if(typeof data.unlimitedSteps==='boolean')c.unlimitedSteps=data.unlimitedSteps;
+  if(typeof data.strategySearch==='boolean')c.strategySearch=data.strategySearch;
   c.saveApiKey=data.saveApiKey===true && typeof data.apiKey==='string';
   c.saveBraveApiKey=data.saveBraveApiKey===true && typeof data.braveApiKey==='string';
   c.saveTavilyApiKey=data.saveTavilyApiKey===true && typeof data.tavilyApiKey==='string';
   return c;
 }
 export async function saveConfig(file, config) {
-  const data={profile:PROFILES.includes(config.profile)?config.profile:'coding',executionMode:['quick','standard','deep','auto'].includes(config.executionMode)?config.executionMode:'standard',endpoint:config.endpoint,model:config.model,plannerModel:config.plannerModel,workerModel:config.workerModel,reviewerModel:config.reviewerModel,workspaceDir:config.workspace,maxSteps:config.maxSteps,contextLimit:config.contextLimit,computerEnabled:config.computerEnabled,computerNetworkEnabled:config.computerNetworkEnabled,unlimitedSteps:config.unlimitedSteps,mcpReadOnly:config.mcpReadOnly,mcpUrl:config.mcpUrl,mcpInitialized:config.mcpInitialized,saveApiKey:config.saveApiKey,saveBraveApiKey:config.saveBraveApiKey,saveTavilyApiKey:config.saveTavilyApiKey,searchProvider:config.searchProvider};
-  for(const key of REASONING_KEYS)if(config[key]!==undefined)data[key]=config[key];
+  const data={profile:PROFILES.includes(config.profile)?config.profile:'coding',endpoint:config.endpoint,model:config.model,reviewerModel:config.reviewerModel,workspaceDir:config.workspace,maxSteps:config.maxSteps,contextLimit:config.contextLimit,computerEnabled:config.computerEnabled,computerNetworkEnabled:config.computerNetworkEnabled,unlimitedSteps:config.unlimitedSteps,mcpReadOnly:config.mcpReadOnly,mcpUrl:config.mcpUrl,mcpInitialized:config.mcpInitialized,saveApiKey:config.saveApiKey,saveBraveApiKey:config.saveBraveApiKey,saveTavilyApiKey:config.saveTavilyApiKey,searchProvider:config.searchProvider};
+  if(typeof config.strategySearch==='boolean')data.strategySearch=config.strategySearch;
+  for(const key of ['reasoningEffort','reviewerReasoningEffort'])if(config[key]!==undefined)data[key]=config[key];
   for(const key of ['telegramUserId','telegramEnabled','saveTelegramToken'])if(config[key]!==undefined)data[key]=config[key];
   if(config.saveTelegramToken&&config.telegramToken)data.telegramToken=config.telegramToken;
   if(config.saveApiKey && config.apiKey)data.apiKey=config.apiKey;

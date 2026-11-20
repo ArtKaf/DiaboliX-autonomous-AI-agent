@@ -2,11 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validEffort,resolveEffort,ReasoningHistory} from '../reasoning.js';
 
-test('reasoning levels validate and role overrides inherit or use provider default',()=>{
+test('reasoning levels validate and optional reviewer override inherits or uses provider default',()=>{
  for(const level of ['', 'none','minimal','low','medium','high','xhigh','max'])assert.equal(validEffort(level),true);
  assert.equal(validEffort('default'),false);assert.equal(validEffort('default',true),true);assert.equal(validEffort('ultra'),false);assert.equal(validEffort(null),false);
- const config={reasoningEffort:'high',plannerReasoningEffort:'low',workerReasoningEffort:'',reviewerReasoningEffort:'default'};
- assert.equal(resolveEffort(config,'planner'),'low');assert.equal(resolveEffort(config,'worker'),'high');assert.equal(resolveEffort(config,'reviewer'),'');
+ const config={reasoningEffort:'high',reviewerReasoningEffort:'default'};
+ assert.equal(resolveEffort(config,'worker'),'high');assert.equal(resolveEffort(config,'reviewer'),'');assert.equal(resolveEffort({...config,reviewerReasoningEffort:''},'reviewer'),'high');
 });
 test('provider reasoning state stays with the originating endpoint and model',()=>{
  const history=new ReasoningHistory(),details=[{type:'reasoning.encrypted',data:'opaque'}];
